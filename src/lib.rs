@@ -10,6 +10,10 @@
 pub mod error;
 pub mod rowset;
 
+// Pure-logic ticking state (no network/Arrow deps) — testable in isolation.
+pub mod space_mapper;
+pub mod table_state;
+
 // Networked modules are introduced phase by phase behind the `client` feature.
 // (auth, flight, barrage, space_mapper, table_state, subscribe)
 #[cfg(feature = "client")]

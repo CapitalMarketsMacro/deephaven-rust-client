@@ -34,6 +34,10 @@ impl Interval {
         Interval { begin: value, end: value + 1 }
     }
 
+    pub fn of_start_and_size(begin: u64, size: u64) -> Interval {
+        Interval { begin, end: begin + size }
+    }
+
     pub fn count(&self) -> u64 {
         self.end - self.begin
     }

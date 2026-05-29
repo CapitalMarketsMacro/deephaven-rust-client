@@ -18,6 +18,11 @@ pub enum Error {
     #[error("rowset decode: bad command byte {0:#04x}")]
     BadCommand(u8),
 
+    /// A space-mapper invariant was violated (duplicate insert, missing keys,
+    /// or a shift that changed the set size).
+    #[error("space mapper: {0}")]
+    SpaceMapper(String),
+
     /// The endpoint string could not be parsed into a valid URI.
     #[cfg(feature = "client")]
     #[error("invalid endpoint URI: {0}")]
