@@ -28,6 +28,7 @@ Or pass --host and let it build the connection.json URL:
 """
 
 import argparse
+import base64
 import os
 import sys
 import time
@@ -88,6 +89,83 @@ def deep_scan(obj, label, depth=0, max_depth=3, seen=None):
             deep_scan(val, f"{label}.{name}", depth + 1, max_depth, seen)
 
 
+# Captured `authorization` metadata values actually sent on gRPC calls
+# (the ground truth of what the worker accepts). Maps value -> example method.
+_captured_auth = {}
+
+
+def _install_auth_capture():
+    """Monkeypatch grpc channel creation to record the `authorization` metadata
+    sent on outgoing calls. This captures exactly what the Rust client must
+    replay, regardless of how the library stores it internally."""
+    try:
+        import grpc
+    except Exception as e:
+        log(f"grpc not importable, cannot capture metadata: {e}")
+        return
+
+    class Capture(
+        grpc.UnaryUnaryClientInterceptor,
+        grpc.UnaryStreamClientInterceptor,
+        grpc.StreamUnaryClientInterceptor,
+        grpc.StreamStreamClientInterceptor,
+    ):
+        def _record(self, details):
+            for k, v in (details.metadata or []):
+                if k.lower() == "authorization":
+                    _captured_auth[v if isinstance(v, (str, bytes)) else str(v)] = details.method
+
+        def intercept_unary_unary(self, continuation, details, request):
+            self._record(details)
+            return continuation(details, request)
+
+        def intercept_unary_stream(self, continuation, details, request):
+            self._record(details)
+            return continuation(details, request)
+
+        def intercept_stream_unary(self, continuation, details, request_iterator):
+            self._record(details)
+            return continuation(details, request_iterator)
+
+        def intercept_stream_stream(self, continuation, details, request_iterator):
+            self._record(details)
+            return continuation(details, request_iterator)
+
+    interceptor = Capture()
+    orig_secure = grpc.secure_channel
+    orig_insecure = grpc.insecure_channel
+
+    def secure(*a, **k):
+        return grpc.intercept_channel(orig_secure(*a, **k), interceptor)
+
+    def insecure(*a, **k):
+        return grpc.intercept_channel(orig_insecure(*a, **k), interceptor)
+
+    grpc.secure_channel = secure
+    grpc.insecure_channel = insecure
+    log("Installed gRPC authorization-metadata capture.")
+
+
+def _report_captured_auth():
+    log("Captured `authorization` metadata actually sent on gRPC calls:")
+    if not _captured_auth:
+        log("  (none captured — the auth calls may use pyarrow Flight's own gRPC,")
+        log("   not python-grpc; tell me and I'll add a Flight-level capture)")
+        return
+    for val, method in _captured_auth.items():
+        if isinstance(val, bytes):
+            log(f"  [binary] len={len(val)} (from {method})")
+            log(f"     base64 = {base64.b64encode(val).decode()}")
+            try:
+                log(f"     ascii  = {val.decode('ascii')!r}")
+            except Exception:
+                log("     ascii  = (not ASCII-decodable; it's a binary token)")
+        else:
+            log(f"  [text] (from {method}): {val!r}")
+    log("Use the [text] value (or the ascii form) as DH_AUTH. If it's only")
+    log("binary, tell me — the Rust client needs a binary-metadata path.")
+
+
 def main():
     p = argparse.ArgumentParser(description="Deephaven Enterprise connection probe")
     p.add_argument("--host", help="Server host, e.g. dh-enterprise.example.com")
@@ -125,6 +203,9 @@ def main():
         log("Install the Core+ client wheel from your Enterprise server (see the")
         log("docstring at the top of this file), then re-run.")
         sys.exit(1)
+
+    # Capture the real authorization metadata sent on gRPC calls.
+    _install_auth_capture()
 
     # --- Authenticate to the auth server ----------------------------------
     log("Creating SessionManager (downloads connection.json, finds auth server)...")
@@ -195,6 +276,7 @@ def main():
     log("worker host/port. Use them with the Rust `ticking` example (see below).")
     deep_scan(sm, "sm")
     deep_scan(session, "session")
+    _report_captured_auth()
     log("Rust command (run promptly — the token is session-scoped and expires):")
     log('  $env:DH_AUTH="<the TOKEN value above>"; $env:DH_TLS_INSECURE="1"; $env:DH_SECONDS=20')
     log('  cargo run --example ticking -- https://<ADDR host>:<ADDR port> ' + args.table)
