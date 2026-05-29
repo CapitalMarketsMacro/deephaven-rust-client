@@ -23,3 +23,14 @@ pub mod flight;
 
 #[cfg(feature = "client")]
 pub mod console;
+
+/// planus-generated Barrage flatbuffer types. To regenerate:
+/// `planus rust -o src/barrage_generated.rs ../barrage/format/Barrage.fbs`
+/// then strip the unconditional serde derives the CLI emits (serde is not a
+/// dependency): `sed -i '/::serde::Serialize,/d; /::serde::Deserialize,/d'`.
+#[cfg(feature = "client")]
+#[allow(warnings, clippy::all)]
+pub mod barrage_generated;
+
+#[cfg(feature = "client")]
+pub mod barrage;
