@@ -31,8 +31,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let seconds: u64 = std::env::var("DH_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
 
-    // Auth precedence: Basic (DH_USER[/DH_PASSWORD]) > PSK (arg/DH_PSK) > anonymous.
-    let options = if let Ok(user) = std::env::var("DH_USER") {
+    // Auth precedence: verbatim (DH_AUTH) > Basic (DH_USER) > PSK > anonymous.
+    let options = if let Ok(auth) = std::env::var("DH_AUTH") {
+        // Use a captured/preformed `authorization` value verbatim — e.g. an
+        // Enterprise auth-server token copied from a working session.
+        println!("Connecting to {url} (verbatim authorization)...");
+        ClientOptions::with_authorization(auth)
+    } else if let Ok(user) = std::env::var("DH_USER") {
         // If no separate password is given, reuse the username (some setups use
         // the same value for both).
         let password = std::env::var("DH_PASSWORD").unwrap_or_else(|_| user.clone());
