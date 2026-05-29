@@ -1,3 +1,7 @@
 target/
 Cargo.lock
 /data/
+
+# Per-machine cargo config (protoc path, TLS workarounds). Use
+# .cargo/config.toml.example as a template.
+/.cargo/config.toml

@@ -28,9 +28,11 @@ Basic auth (Anonymous + PSK are supported).
 
 ## Build prerequisites
 
-- A `protoc` binary (for `tonic-build`). Point cargo at it via `PROTOC`, or put
-  it on `PATH`. (`.cargo/config.toml` in this repo sets a local Windows path —
-  adjust it for your machine.)
+- A `protoc` binary (for `tonic-build`). Put it on `PATH`, or set the `PROTOC`
+  env var to its full path. If your machine needs extra cargo settings (a custom
+  `protoc` path, or a TLS revocation workaround on some corporate Windows
+  networks), copy `.cargo/config.toml.example` to `.cargo/config.toml` (which is
+  gitignored) and adjust.
 - To regenerate the Barrage flatbuffers: `cargo install planus-cli`, then
   `planus rust -o src/barrage_generated.rs path/to/Barrage.fbs` and strip the
   emitted `::serde::` derives.

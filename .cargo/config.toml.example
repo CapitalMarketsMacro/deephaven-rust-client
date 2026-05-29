@@ -1,0 +1,15 @@
+# Optional per-machine cargo config. Copy to `.cargo/config.toml` (gitignored)
+# and uncomment what you need. You only need this file if the defaults below
+# don't already work on your machine.
+
+# tonic-build needs a `protoc` binary. If `protoc` is already on your PATH you
+# don't need anything here. Otherwise point cargo at it:
+# [env]
+# PROTOC = "C:/path/to/protoc.exe"          # Windows
+# PROTOC = "/usr/bin/protoc"                # Linux/macOS
+
+# Some corporate Windows networks can't perform TLS certificate revocation
+# checks against crates.io (CRYPT_E_NO_REVOCATION_CHECK), which makes cargo fail
+# to fetch the registry. If you hit that, uncomment:
+# [http]
+# check-revoke = false

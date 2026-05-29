@@ -39,9 +39,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("cargo:rerun-if-changed=proto");
 
+    // tonic-build/prost-build invoke `protoc`, discovered via the PROTOC env var
+    // or `protoc` on PATH. Emit a clear hint before the (less obvious) failure
+    // if neither is available.
+    if !protoc_available() {
+        println!(
+            "cargo:warning=protoc not found. Install Protocol Buffers and ensure \
+             `protoc` is on PATH, or set the PROTOC env var to its full path. \
+             See https://grpc.io/docs/protoc-installation/"
+        );
+    }
+
     tonic_build::configure()
         .build_server(false)
         .compile_protos(&full, &[proto_root])?;
 
     Ok(())
+}
+
+/// Whether a `protoc` binary can be located the way prost-build will look for it:
+/// the `PROTOC` env var, or `protoc` on `PATH`.
+fn protoc_available() -> bool {
+    if std::env::var_os("PROTOC").is_some() {
+        return true;
+    }
+    let exe = if cfg!(windows) { "protoc.exe" } else { "protoc" };
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(exe).is_file()))
+        .unwrap_or(false)
 }
