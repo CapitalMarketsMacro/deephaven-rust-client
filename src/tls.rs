@@ -77,7 +77,16 @@ pub async fn connect_insecure(endpoint: String, domain: Option<String>) -> Resul
     config.alpn_protocols = vec![b"h2".to_vec()];
     let config = Arc::new(config);
 
-    let ep = Endpoint::from_shared(endpoint).map_err(|e| Error::InvalidUri(e.to_string()))?;
+    // Hand tonic an http:// URI so its connector doesn't try to manage TLS
+    // itself (it would either reject the https scheme without a tls_config, or
+    // double-wrap TLS on top of ours). Our connector below still does real TLS
+    // to the same host:port.
+    let tonic_endpoint = match endpoint.strip_prefix("https://") {
+        Some(rest) => format!("http://{rest}"),
+        None => endpoint.clone(),
+    };
+    let ep =
+        Endpoint::from_shared(tonic_endpoint).map_err(|e| Error::InvalidUri(e.to_string()))?;
 
     let connector = tower::service_fn(move |uri: Uri| {
         let config = config.clone();
