@@ -62,6 +62,11 @@ pub enum Error {
     #[cfg(feature = "client")]
     #[error("barrage: {0}")]
     Barrage(String),
+
+    /// TLS configuration/connection failure.
+    #[cfg(feature = "client")]
+    #[error("tls error: {0}")]
+    Tls(String),
 }
 
 /// Crate-wide result alias.

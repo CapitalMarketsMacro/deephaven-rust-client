@@ -57,6 +57,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(domain) = std::env::var("DH_TLS_DOMAIN") {
         options = options.with_tls_domain(domain);
     }
+    // DANGEROUS: DH_TLS_INSECURE=1 skips TLS cert verification. Testing only.
+    if matches!(std::env::var("DH_TLS_INSECURE").as_deref(), Ok("1") | Ok("true")) {
+        options = options.danger_accept_invalid_certs(true);
+    }
 
     let server = Server::connect(&url, options).await?;
     println!("Connected. Subscribing to '{table}'...\n");

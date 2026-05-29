@@ -29,6 +29,9 @@ pub mod auth;
 pub mod flight;
 
 #[cfg(feature = "client")]
+pub mod tls;
+
+#[cfg(feature = "client")]
 pub mod console;
 
 /// planus-generated Barrage flatbuffer types. To regenerate:

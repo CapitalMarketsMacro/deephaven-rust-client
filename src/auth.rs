@@ -35,6 +35,8 @@ pub struct ClientOptions {
     /// Override the TLS server name (SNI / cert hostname) if it differs from the
     /// host in the URL.
     tls_domain: Option<String>,
+    /// DANGEROUS: skip TLS certificate verification entirely.
+    tls_insecure: bool,
 }
 
 impl ClientOptions {
@@ -44,6 +46,7 @@ impl ClientOptions {
             extra_headers: Vec::new(),
             ca_cert_pem: None,
             tls_domain: None,
+            tls_insecure: false,
         }
     }
 
@@ -90,6 +93,14 @@ impl ClientOptions {
     /// Override the expected TLS server name (cert hostname / SNI).
     pub fn with_tls_domain(mut self, domain: impl Into<String>) -> ClientOptions {
         self.tls_domain = Some(domain.into());
+        self
+    }
+
+    /// DANGEROUS: disable TLS certificate verification. Only for internal
+    /// testing against a server whose chain you can't otherwise trust. Prefer
+    /// [`with_ca_certificate`](Self::with_ca_certificate).
+    pub fn danger_accept_invalid_certs(mut self, insecure: bool) -> ClientOptions {
+        self.tls_insecure = insecure;
         self
     }
 }
@@ -176,23 +187,32 @@ impl Server {
         };
         let use_tls = endpoint.starts_with("https://");
 
-        let mut builder =
-            Channel::from_shared(endpoint).map_err(|e| Error::InvalidUri(e.to_string()))?;
+        let channel = if use_tls && options.tls_insecure {
+            // Opt-in insecure path: TLS with certificate verification disabled.
+            eprintln!(
+                "WARNING: TLS certificate verification is DISABLED for {endpoint} \
+                 (insecure mode). Do not use against untrusted networks."
+            );
+            crate::tls::connect_insecure(endpoint, options.tls_domain.clone()).await?
+        } else {
+            let mut builder =
+                Channel::from_shared(endpoint).map_err(|e| Error::InvalidUri(e.to_string()))?;
 
-        // https:// => TLS via rustls using the OS trust store (plus any extra CA
-        // the caller supplied). Required for Deephaven Enterprise behind Envoy.
-        if use_tls {
-            let mut tls = ClientTlsConfig::new().with_native_roots();
-            if let Some(pem) = &options.ca_cert_pem {
-                tls = tls.ca_certificate(Certificate::from_pem(pem.clone()));
+            // https:// => TLS via rustls using the OS trust store (plus any extra
+            // CA the caller supplied). Required for Enterprise behind Envoy.
+            if use_tls {
+                let mut tls = ClientTlsConfig::new().with_native_roots();
+                if let Some(pem) = &options.ca_cert_pem {
+                    tls = tls.ca_certificate(Certificate::from_pem(pem.clone()));
+                }
+                if let Some(domain) = &options.tls_domain {
+                    tls = tls.domain_name(domain.clone());
+                }
+                builder = builder.tls_config(tls)?;
             }
-            if let Some(domain) = &options.tls_domain {
-                tls = tls.domain_name(domain.clone());
-            }
-            builder = builder.tls_config(tls)?;
-        }
 
-        let channel = builder.connect().await?;
+            builder.connect().await?
+        };
 
         let mut config = ConfigServiceClient::new(channel.clone());
 
