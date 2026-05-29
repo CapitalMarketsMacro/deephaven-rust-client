@@ -10,8 +10,11 @@
 pub mod error;
 pub mod rowset;
 
-// Pure-logic ticking state (no network/Arrow deps) — testable in isolation.
+// Pure-logic key-space mapping (no deps) — testable in isolation.
 pub mod space_mapper;
+
+// TableState carries Arrow column data, so it lives behind the client feature.
+#[cfg(feature = "client")]
 pub mod table_state;
 
 // Networked modules are introduced phase by phase behind the `client` feature.

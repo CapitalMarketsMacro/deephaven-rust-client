@@ -29,8 +29,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Ok(Some(update))) => {
                 update_count += 1;
                 let kind = if update.is_snapshot { "snapshot" } else { "delta" };
+                let tail = subscription.snapshot().ok().map(|b| format_last_row(&b)).unwrap_or_default();
                 println!(
-                    "update #{update_count:<3} [{kind:>8}]  rows={:<5} (+{} -{})  server_size={}",
+                    "update #{update_count:<3} [{kind:>8}]  rows={:<5} (+{} -{})  server_size={}  last_row=[{tail}]",
                     update.num_rows,
                     update.added.count(),
                     update.removed.count(),
@@ -53,4 +54,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nDone. Received {update_count} update(s); final row count = {}.", subscription.num_rows());
     Ok(())
+}
+
+/// Render the last row of a record batch as `col=value` pairs, to show that
+/// real cell data is flowing into the local table state.
+fn format_last_row(batch: &arrow::record_batch::RecordBatch) -> String {
+    use arrow::util::display::{ArrayFormatter, FormatOptions};
+    if batch.num_rows() == 0 {
+        return String::new();
+    }
+    let row = batch.num_rows() - 1;
+    let opts = FormatOptions::default();
+    batch
+        .schema()
+        .fields()
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let cell = ArrayFormatter::try_new(batch.column(i), &opts)
+                .map(|fmt| fmt.value(row).to_string())
+                .unwrap_or_else(|_| "?".to_string());
+            format!("{}={}", f.name(), cell)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
