@@ -17,6 +17,31 @@ pub enum Error {
     /// A RowSet delta buffer contained an unrecognized command/value tag.
     #[error("rowset decode: bad command byte {0:#04x}")]
     BadCommand(u8),
+
+    /// The endpoint string could not be parsed into a valid URI.
+    #[cfg(feature = "client")]
+    #[error("invalid endpoint URI: {0}")]
+    InvalidUri(String),
+
+    /// A header name or value could not be represented as gRPC metadata.
+    #[cfg(feature = "client")]
+    #[error("invalid request metadata: {0}")]
+    Metadata(String),
+
+    /// The server's response did not include an `authorization` token header.
+    #[cfg(feature = "client")]
+    #[error("server response did not contain an authorization token")]
+    MissingAuthToken,
+
+    /// gRPC transport/connection failure.
+    #[cfg(feature = "client")]
+    #[error("transport error: {0}")]
+    Transport(#[from] tonic::transport::Error),
+
+    /// A gRPC call returned a non-OK status.
+    #[cfg(feature = "client")]
+    #[error("grpc status: {0}")]
+    Status(#[from] tonic::Status),
 }
 
 /// Crate-wide result alias.

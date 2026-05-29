@@ -5,16 +5,39 @@ edition = "2021"
 description = "Clean-room Rust client for Deephaven Community Core over Arrow Flight + Barrage"
 license = "Apache-2.0"
 
+[lib]
+# Generated proto code carries doc comments that aren't valid Rust doctests.
+# We have no real doctests, so disable them crate-wide.
+doctest = false
+
 [features]
 # `client` gates everything that needs the network stack and codegen. With it
 # off (`--no-default-features`), the crate is just the pure-logic RowSet codec
 # so it builds and tests standalone. Optional deps get wired into this list as
 # later phases introduce them.
 default = ["client"]
-client = []
+client = ["dep:tonic", "dep:prost", "dep:tokio"]
 
 [dependencies]
 # Library error type. Unconditional and tiny; the codec uses it too.
 thiserror = "2"
+
+# --- client feature: gRPC stack (Phase 1+) ---
+# tonic/prost pinned to 0.13: the 0.14 line split prost codegen into separate
+# crates and dropped `tonic_build::configure()`. 0.13 keeps the approved API
+# and pairs with arrow-flight 55–57 (added in Phase 2).
+tonic = { version = "0.13", optional = true }
+prost = { version = "0.13", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"], optional = true }
+
+[build-dependencies]
+# Generates client stubs from the vendored protos. Needs a `protoc` binary
+# (see PROTOC in .cargo/config.toml). Only emits code when the `client` feature
+# is on and the proto files are present (see build.rs).
+tonic-build = "0.13"
+
+[[example]]
+name = "connect"
+required-features = ["client"]
 
 [dev-dependencies]

@@ -3,3 +3,9 @@
 # fetch the registry. Disable the revocation check so dependency downloads work.
 [http]
 check-revoke = false
+
+# protoc isn't on PATH (installed via winget into the WinGet packages dir).
+# prost-build/tonic-build honor PROTOC; set it here so every cargo invocation
+# (including build scripts) can find it.
+[env]
+PROTOC = "C:/Users/mruda/AppData/Local/Microsoft/WinGet/Packages/Google.Protobuf_Microsoft.Winget.Source_8wekyb3d8bbwe/bin/protoc.exe"

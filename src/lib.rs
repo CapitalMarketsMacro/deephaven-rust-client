@@ -12,3 +12,8 @@ pub mod rowset;
 
 // Networked modules are introduced phase by phase behind the `client` feature.
 // (auth, flight, barrage, space_mapper, table_state, subscribe)
+#[cfg(feature = "client")]
+pub mod proto;
+
+#[cfg(feature = "client")]
+pub mod auth;
