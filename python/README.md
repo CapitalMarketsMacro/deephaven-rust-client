@@ -22,7 +22,7 @@ The Enterprise client wheel comes from your server, not public PyPI:
 
 ```bash
 python -m venv .venv && . .venv/Scripts/activate    # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install --extra-index-url https://nspra00a0005.wellsfargo.com:8123/iris/coreplus/pip deephaven-coreplus-client
+pip install --extra-index-url https://<enterprise-host>:<web-port>/iris/coreplus/pip deephaven-coreplus-client
 ```
 
 (The exact index URL varies by deployment — your Deephaven/infra team can
@@ -31,12 +31,12 @@ confirm it. It's usually under `…/iris/…` on the web port.)
 ## Run
 
 ```powershell
-$env:DH_USER="u674256"
-$env:DH_PASSWORD="your-password"
-python enterprise_client.py --host nspra00a0005.wellsfargo.com --web-port 8123 --table executions
+$env:DH_USER="<username>"
+$env:DH_PASSWORD="<password>"
+python enterprise_client.py --host <enterprise-host> --web-port <web-port> --table <table>
 ```
 
-- If it lists Persistent Queries, re-run with `--pq "<the PQ name that holds executions>"`.
+- If it lists Persistent Queries, re-run with `--pq "<the PQ name that holds your table>"`.
 - `--seconds 0` prints a single snapshot; otherwise it polls every `--interval` seconds.
 - `--connection-url` lets you pass the full `…/iris/connection.json` URL directly.
 

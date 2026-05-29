@@ -20,11 +20,11 @@ Install the client (from your Enterprise server's wheel, not public PyPI):
     # (exact URL varies; your Deephaven/infra team can confirm)
 
 Usage (PowerShell):
-    $env:DH_USER="u674256"; $env:DH_PASSWORD="your-password"
-    python enterprise_client.py --connection-url https://nspra00a0005.wellsfargo.com:8123/iris/connection.json --table executions
+    $env:DH_USER="<username>"; $env:DH_PASSWORD="<password>"
+    python enterprise_client.py --connection-url https://<enterprise-host>:<web-port>/iris/connection.json --table <table>
 
 Or pass --host and let it build the connection.json URL:
-    python enterprise_client.py --host nspra00a0005.wellsfargo.com --web-port 8123 --table executions
+    python enterprise_client.py --host <enterprise-host> --web-port <web-port> --table <table>
 """
 
 import argparse
@@ -43,9 +43,25 @@ def show_api(label, obj):
     log(f"{label} ({type(obj).__module__}.{type(obj).__name__}) members: {members}")
 
 
+def dump_token_like(obj, label):
+    """Print any attributes that look like a token/cookie/credential (handoff)."""
+    for name in dir(obj):
+        if name.startswith("_"):
+            continue
+        if any(k in name.lower() for k in ("token", "cookie", "cred")):
+            try:
+                val = getattr(obj, name)
+                if callable(val):
+                    log(f"  {label}.{name}() -> callable (not invoked)")
+                else:
+                    log(f"  {label}.{name} = {val!r}")
+            except Exception as e:
+                log(f"  {label}.{name} access error: {e}")
+
+
 def main():
     p = argparse.ArgumentParser(description="Deephaven Enterprise connection probe")
-    p.add_argument("--host", help="Server host, e.g. nspra00a0005.wellsfargo.com")
+    p.add_argument("--host", help="Server host, e.g. dh-enterprise.example.com")
     p.add_argument("--web-port", default="8123", help="Web/Envoy port (for connection.json). Default 8123")
     p.add_argument("--connection-url", help="Full connection.json URL (overrides --host/--web-port)")
     p.add_argument("--user", default=os.environ.get("DH_USER"), help="Username (or DH_USER env)")
@@ -142,26 +158,52 @@ def main():
 
     show_api("Session", session)
 
+    # --- Handoff info for the Rust client ---------------------------------
+    # We want: the real worker host:port, the CA cert, and the auth token the
+    # worker accepts — so the Rust client can connect to the worker directly.
+    log("=== Rust handoff: worker address + auth token ===")
+    dump_token_like(sm, "SessionManager")
+    if hasattr(sm, "auth_client"):
+        show_api("auth_client", sm.auth_client)
+        dump_token_like(sm.auth_client, "auth_client")
+    for attr in ("config", "host", "port", "target", "grpc_channel", "_session"):
+        if hasattr(session, attr):
+            try:
+                log(f"  session.{attr} = {getattr(session, attr)!r}")
+            except Exception as e:
+                log(f"  session.{attr} access error: {e}")
+
     # --- Open the table and print snapshots -------------------------------
     log(f"Opening table '{args.table}'...")
     table = session.open_table(args.table)
-    log(f"Table opened. Columns: {[(c.name, c.type) for c in table.columns]}")
+    show_api("Table", table)
 
-    def snapshot_rows():
-        arrow = table.to_arrow()
-        return arrow.num_rows, arrow
+    def take_snapshot():
+        # This Core+ table exposes an Arrow snapshot; fall back to the session's
+        # barrage snapshot if the method name differs.
+        if hasattr(table, "to_arrow"):
+            return table.to_arrow()
+        if hasattr(session, "barrage_snapshot"):
+            return session.barrage_snapshot(table).to_arrow()
+        if hasattr(session, "snapshot"):
+            return session.snapshot(table).to_arrow()
+        raise RuntimeError("No snapshot method found; see the Table members above")
+
+    arrow = take_snapshot()
+    log(f"Columns: {[(f.name, str(f.type)) for f in arrow.schema]}")
+    log(f"Initial rows: {arrow.num_rows}")
 
     if args.seconds <= 0:
-        rows, arrow = snapshot_rows()
-        log(f"Snapshot: {rows} rows")
-        print(arrow.slice(max(0, rows - 5)).to_pandas())
+        n = arrow.num_rows
+        print(arrow.slice(max(0, n - 5)).to_pandas())
         return
 
     deadline = time.time() + args.seconds
     while time.time() < deadline:
-        rows, arrow = snapshot_rows()
-        tail = arrow.slice(max(0, rows - 1)).to_pylist()
-        log(f"rows={rows}  last={tail}")
+        arrow = take_snapshot()
+        n = arrow.num_rows
+        tail = arrow.slice(max(0, n - 1)).to_pylist()
+        log(f"rows={n}  last={tail}")
         time.sleep(args.interval)
 
     log("Done.")
