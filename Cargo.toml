@@ -16,7 +16,7 @@ doctest = false
 # so it builds and tests standalone. Optional deps get wired into this list as
 # later phases introduce them.
 default = ["client"]
-client = ["dep:tonic", "dep:prost", "dep:tokio"]
+client = ["dep:tonic", "dep:prost", "dep:tokio", "dep:futures", "dep:bytes", "dep:arrow", "dep:arrow-flight"]
 
 [dependencies]
 # Library error type. Unconditional and tiny; the codec uses it too.
@@ -29,6 +29,12 @@ thiserror = "2"
 tonic = { version = "0.13", optional = true }
 prost = { version = "0.13", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"], optional = true }
+futures = { version = "0.3", optional = true }
+bytes = { version = "1", optional = true }
+# arrow/arrow-flight 56: the version whose tonic dep resolves to a single
+# tonic 0.13 (55 pulls tonic 0.12, 57 pulls 0.14). Verified via `cargo tree`.
+arrow = { version = "56", optional = true }
+arrow-flight = { version = "56", optional = true }
 
 [build-dependencies]
 # Generates client stubs from the vendored protos. Needs a `protoc` binary
@@ -38,6 +44,14 @@ tonic-build = "0.13"
 
 [[example]]
 name = "connect"
+required-features = ["client"]
+
+[[example]]
+name = "snapshot"
+required-features = ["client"]
+
+[[example]]
+name = "setup"
 required-features = ["client"]
 
 [dev-dependencies]

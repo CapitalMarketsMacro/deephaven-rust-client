@@ -7,6 +7,7 @@
 //! and is refreshed on a keepalive timer before it expires.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -64,6 +65,8 @@ struct Inner {
     extra_headers: Vec<(String, String)>,
     /// How long to wait between keepalive pings (already halved per server policy).
     expiration: Duration,
+    /// Monotonic source for client-minted export ticket ids (starts at 1).
+    next_ticket_id: AtomicI32,
 }
 
 impl Inner {
@@ -126,6 +129,7 @@ impl Server {
             token: Mutex::new(token),
             extra_headers: options.extra_headers,
             expiration,
+            next_ticket_id: AtomicI32::new(1),
         });
 
         let mut server = Server { channel, inner: inner.clone(), keepalive: None };
@@ -136,6 +140,17 @@ impl Server {
     /// A clone of the underlying channel for building other service clients.
     pub fn channel(&self) -> Channel {
         self.channel.clone()
+    }
+
+    /// Mint a fresh client-controlled export ticket: the ASCII byte `'e'`
+    /// followed by a little-endian 4-byte id. Port of `Server.MakeNewTicket`/
+    /// `NewTicket`.
+    pub fn new_export_ticket(&self) -> Vec<u8> {
+        let id = self.inner.next_ticket_id.fetch_add(1, Ordering::SeqCst);
+        let mut bytes = Vec::with_capacity(5);
+        bytes.push(b'e');
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes
     }
 
     /// Wrap `message` in a request carrying the current session token plus any

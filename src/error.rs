@@ -42,6 +42,16 @@ pub enum Error {
     #[cfg(feature = "client")]
     #[error("grpc status: {0}")]
     Status(#[from] tonic::Status),
+
+    /// The server reported a failure resolving/creating a table.
+    #[cfg(feature = "client")]
+    #[error("server error: {0}")]
+    Server(String),
+
+    /// Failure decoding Arrow Flight data into record batches.
+    #[cfg(feature = "client")]
+    #[error("arrow decode error: {0}")]
+    Arrow(String),
 }
 
 /// Crate-wide result alias.

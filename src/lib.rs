@@ -17,3 +17,9 @@ pub mod proto;
 
 #[cfg(feature = "client")]
 pub mod auth;
+
+#[cfg(feature = "client")]
+pub mod flight;
+
+#[cfg(feature = "client")]
+pub mod console;
