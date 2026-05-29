@@ -33,7 +33,9 @@ futures = { version = "0.3", optional = true }
 bytes = { version = "1", optional = true }
 # arrow/arrow-flight 56: the version whose tonic dep resolves to a single
 # tonic 0.13 (55 pulls tonic 0.12, 57 pulls 0.14). Verified via `cargo tree`.
-arrow = { version = "56", optional = true }
+# chrono-tz lets ArrayFormatter render named-timezone Timestamp columns
+# (Deephaven sends timestamps with a named zone).
+arrow = { version = "56", optional = true, features = ["chrono-tz"] }
 arrow-flight = { version = "56", optional = true }
 # Barrage flatbuffer runtime. Codegen (src/barrage_generated.rs) is done
 # out-of-band with the planus CLI, so only the runtime crate is a dependency.
@@ -59,6 +61,10 @@ required-features = ["client"]
 
 [[example]]
 name = "subscribe"
+required-features = ["client"]
+
+[[example]]
+name = "ticking"
 required-features = ["client"]
 
 [dev-dependencies]
