@@ -38,3 +38,6 @@ pub mod barrage_generated;
 
 #[cfg(feature = "client")]
 pub mod barrage;
+
+#[cfg(feature = "client")]
+pub mod subscribe;

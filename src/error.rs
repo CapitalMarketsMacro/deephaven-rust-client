@@ -57,6 +57,11 @@ pub enum Error {
     #[cfg(feature = "client")]
     #[error("arrow decode error: {0}")]
     Arrow(String),
+
+    /// Malformed or unexpected Barrage update metadata.
+    #[cfg(feature = "client")]
+    #[error("barrage: {0}")]
+    Barrage(String),
 }
 
 /// Crate-wide result alias.
