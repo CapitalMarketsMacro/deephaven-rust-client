@@ -59,6 +59,35 @@ def dump_token_like(obj, label):
                 log(f"  {label}.{name} access error: {e}")
 
 
+def deep_scan(obj, label, depth=0, max_depth=3, seen=None):
+    """Walk the session object graph and surface anything that looks like an
+    auth token or a worker host/port — the values the Rust client needs.
+    Recurses only into Deephaven/pydeephaven objects to stay bounded."""
+    if seen is None:
+        seen = set()
+    if id(obj) in seen or depth > max_depth:
+        return
+    seen.add(id(obj))
+    for name in dir(obj):
+        if name.startswith("__"):
+            continue
+        lname = name.lower()
+        try:
+            val = getattr(obj, name)
+        except Exception:
+            continue
+        if callable(val):
+            continue
+        if isinstance(val, (str, bytes, int)):
+            if any(k in lname for k in ("token", "cookie", "cred")):
+                log(f"  TOKEN  {label}.{name} = {val!r}")
+            elif any(k in lname for k in ("host", "port", "target", "uri", "url")):
+                log(f"  ADDR   {label}.{name} = {val!r}")
+        mod = getattr(type(val), "__module__", "") or ""
+        if (mod.startswith("pydeephaven") or mod.startswith("deephaven")) and depth < max_depth:
+            deep_scan(val, f"{label}.{name}", depth + 1, max_depth, seen)
+
+
 def main():
     p = argparse.ArgumentParser(description="Deephaven Enterprise connection probe")
     p.add_argument("--host", help="Server host, e.g. dh-enterprise.example.com")
@@ -162,16 +191,13 @@ def main():
     # We want: the real worker host:port, the CA cert, and the auth token the
     # worker accepts — so the Rust client can connect to the worker directly.
     log("=== Rust handoff: worker address + auth token ===")
-    dump_token_like(sm, "SessionManager")
-    if hasattr(sm, "auth_client"):
-        show_api("auth_client", sm.auth_client)
-        dump_token_like(sm.auth_client, "auth_client")
-    for attr in ("config", "host", "port", "target", "grpc_channel", "_session"):
-        if hasattr(session, attr):
-            try:
-                log(f"  session.{attr} = {getattr(session, attr)!r}")
-            except Exception as e:
-                log(f"  session.{attr} access error: {e}")
+    log("Lines tagged TOKEN are candidate DH_AUTH values; ADDR lines are the")
+    log("worker host/port. Use them with the Rust `ticking` example (see below).")
+    deep_scan(sm, "sm")
+    deep_scan(session, "session")
+    log("Rust command (run promptly — the token is session-scoped and expires):")
+    log('  $env:DH_AUTH="<the TOKEN value above>"; $env:DH_TLS_INSECURE="1"; $env:DH_SECONDS=20')
+    log('  cargo run --example ticking -- https://<ADDR host>:<ADDR port> ' + args.table)
 
     # --- Open the table and print snapshots -------------------------------
     log(f"Opening table '{args.table}'...")
