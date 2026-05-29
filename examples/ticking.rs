@@ -46,6 +46,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ClientOptions::anonymous()
     };
 
+    // Optional TLS extras for https endpoints whose cert isn't in the OS trust
+    // store: DH_CA_CERT = path to a PEM CA file; DH_TLS_DOMAIN = cert hostname.
+    let mut options = options;
+    if let Ok(path) = std::env::var("DH_CA_CERT") {
+        let pem = std::fs::read(&path)?;
+        println!("Trusting extra CA certificate from {path}");
+        options = options.with_ca_certificate(pem);
+    }
+    if let Ok(domain) = std::env::var("DH_TLS_DOMAIN") {
+        options = options.with_tls_domain(domain);
+    }
+
     let server = Server::connect(&url, options).await?;
     println!("Connected. Subscribing to '{table}'...\n");
 

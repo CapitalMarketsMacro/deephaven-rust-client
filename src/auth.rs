@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tonic::metadata::{MetadataKey, MetadataMap, MetadataValue};
-use tonic::transport::Channel;
+use tonic::transport::{Certificate, Channel, ClientTlsConfig};
 use tonic::Request;
 
 use crate::error::{Error, Result};
@@ -29,48 +29,67 @@ const TIMEOUT_KEY: &str = "http.session.durationMs";
 pub struct ClientOptions {
     authorization_value: String,
     extra_headers: Vec<(String, String)>,
+    /// Extra CA certificate (PEM) to trust, in addition to the OS roots. For
+    /// servers (e.g. Enterprise) whose internal CA isn't in the OS trust store.
+    ca_cert_pem: Option<Vec<u8>>,
+    /// Override the TLS server name (SNI / cert hostname) if it differs from the
+    /// host in the URL.
+    tls_domain: Option<String>,
 }
 
 impl ClientOptions {
+    fn with_value(authorization_value: String) -> ClientOptions {
+        ClientOptions {
+            authorization_value,
+            extra_headers: Vec::new(),
+            ca_cert_pem: None,
+            tls_domain: None,
+        }
+    }
+
     /// Anonymous access (`Anonymous`).
     pub fn anonymous() -> ClientOptions {
-        ClientOptions {
-            authorization_value: "Anonymous".to_string(),
-            extra_headers: Vec::new(),
-        }
+        ClientOptions::with_value("Anonymous".to_string())
     }
 
     /// Pre-shared-key auth (`io.deephaven.authentication.psk.PskAuthenticationHandler <psk>`).
     pub fn psk(psk: impl AsRef<str>) -> ClientOptions {
-        ClientOptions {
-            authorization_value: format!(
-                "io.deephaven.authentication.psk.PskAuthenticationHandler {}",
-                psk.as_ref()
-            ),
-            extra_headers: Vec::new(),
-        }
+        ClientOptions::with_value(format!(
+            "io.deephaven.authentication.psk.PskAuthenticationHandler {}",
+            psk.as_ref()
+        ))
     }
 
     /// HTTP Basic auth (`Basic <base64(user:password)>`). Used by Deephaven's
     /// basic username/password authentication handler.
     pub fn basic(user: impl AsRef<str>, password: impl AsRef<str>) -> ClientOptions {
         let creds = format!("{}:{}", user.as_ref(), password.as_ref());
-        ClientOptions {
-            authorization_value: format!("Basic {}", base64_encode(creds.as_bytes())),
-            extra_headers: Vec::new(),
-        }
+        ClientOptions::with_value(format!("Basic {}", base64_encode(creds.as_bytes())))
     }
 
     /// Use a fully-formed `authorization` value verbatim, for auth handlers not
     /// covered by the constructors above (e.g. a custom Enterprise handler:
     /// `"io.deephaven.<...>Handler <payload>"`).
     pub fn with_authorization(value: impl Into<String>) -> ClientOptions {
-        ClientOptions { authorization_value: value.into(), extra_headers: Vec::new() }
+        ClientOptions::with_value(value.into())
     }
 
     /// Add an extra header sent on every request (e.g. an envoy route prefix).
     pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> ClientOptions {
         self.extra_headers.push((key.into(), value.into()));
+        self
+    }
+
+    /// Trust an additional CA certificate (PEM bytes) for TLS, on top of the OS
+    /// roots. Use when the server presents a cert signed by an internal CA.
+    pub fn with_ca_certificate(mut self, pem: impl Into<Vec<u8>>) -> ClientOptions {
+        self.ca_cert_pem = Some(pem.into());
+        self
+    }
+
+    /// Override the expected TLS server name (cert hostname / SNI).
+    pub fn with_tls_domain(mut self, domain: impl Into<String>) -> ClientOptions {
+        self.tls_domain = Some(domain.into());
         self
     }
 }
@@ -155,11 +174,25 @@ impl Server {
         } else {
             format!("http://{target}")
         };
+        let use_tls = endpoint.starts_with("https://");
 
-        let channel = Channel::from_shared(endpoint)
-            .map_err(|e| Error::InvalidUri(e.to_string()))?
-            .connect()
-            .await?;
+        let mut builder =
+            Channel::from_shared(endpoint).map_err(|e| Error::InvalidUri(e.to_string()))?;
+
+        // https:// => TLS via rustls using the OS trust store (plus any extra CA
+        // the caller supplied). Required for Deephaven Enterprise behind Envoy.
+        if use_tls {
+            let mut tls = ClientTlsConfig::new().with_native_roots();
+            if let Some(pem) = &options.ca_cert_pem {
+                tls = tls.ca_certificate(Certificate::from_pem(pem.clone()));
+            }
+            if let Some(domain) = &options.tls_domain {
+                tls = tls.domain_name(domain.clone());
+            }
+            builder = builder.tls_config(tls)?;
+        }
+
+        let channel = builder.connect().await?;
 
         let mut config = ConfigServiceClient::new(channel.clone());
 
