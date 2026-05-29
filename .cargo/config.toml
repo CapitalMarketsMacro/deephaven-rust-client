@@ -1,0 +1,5 @@
+# schannel on this Windows host can't perform TLS cert revocation checks
+# against crates.io (CRYPT_E_NO_REVOCATION_CHECK), which makes cargo fail to
+# fetch the registry. Disable the revocation check so dependency downloads work.
+[http]
+check-revoke = false

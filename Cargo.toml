@@ -1,0 +1,20 @@
+[package]
+name = "deephaven-rs"
+version = "0.0.0"
+edition = "2021"
+description = "Clean-room Rust client for Deephaven Community Core over Arrow Flight + Barrage"
+license = "Apache-2.0"
+
+[features]
+# `client` gates everything that needs the network stack and codegen. With it
+# off (`--no-default-features`), the crate is just the pure-logic RowSet codec
+# so it builds and tests standalone. Optional deps get wired into this list as
+# later phases introduce them.
+default = ["client"]
+client = []
+
+[dependencies]
+# Library error type. Unconditional and tiny; the codec uses it too.
+thiserror = "2"
+
+[dev-dependencies]
