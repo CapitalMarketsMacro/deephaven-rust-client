@@ -31,15 +31,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let seconds: u64 = std::env::var("DH_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
 
-    let options = match &psk {
-        Some(p) => {
-            println!("Connecting to {url} (PSK auth)...");
-            ClientOptions::psk(p)
-        }
-        None => {
-            println!("Connecting to {url} (anonymous auth)...");
-            ClientOptions::anonymous()
-        }
+    // Auth precedence: Basic (DH_USER[/DH_PASSWORD]) > PSK (arg/DH_PSK) > anonymous.
+    let options = if let Ok(user) = std::env::var("DH_USER") {
+        // If no separate password is given, reuse the username (some setups use
+        // the same value for both).
+        let password = std::env::var("DH_PASSWORD").unwrap_or_else(|_| user.clone());
+        println!("Connecting to {url} (basic auth, user={user})...");
+        ClientOptions::basic(&user, &password)
+    } else if let Some(p) = &psk {
+        println!("Connecting to {url} (PSK auth)...");
+        ClientOptions::psk(p)
+    } else {
+        println!("Connecting to {url} (anonymous auth)...");
+        ClientOptions::anonymous()
     };
 
     let server = Server::connect(&url, options).await?;

@@ -51,10 +51,69 @@ impl ClientOptions {
         }
     }
 
+    /// HTTP Basic auth (`Basic <base64(user:password)>`). Used by Deephaven's
+    /// basic username/password authentication handler.
+    pub fn basic(user: impl AsRef<str>, password: impl AsRef<str>) -> ClientOptions {
+        let creds = format!("{}:{}", user.as_ref(), password.as_ref());
+        ClientOptions {
+            authorization_value: format!("Basic {}", base64_encode(creds.as_bytes())),
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Use a fully-formed `authorization` value verbatim, for auth handlers not
+    /// covered by the constructors above (e.g. a custom Enterprise handler:
+    /// `"io.deephaven.<...>Handler <payload>"`).
+    pub fn with_authorization(value: impl Into<String>) -> ClientOptions {
+        ClientOptions { authorization_value: value.into(), extra_headers: Vec::new() }
+    }
+
     /// Add an extra header sent on every request (e.g. an envoy route prefix).
     pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> ClientOptions {
         self.extra_headers.push((key.into(), value.into()));
         self
+    }
+}
+
+/// Standard base64 encoding (with padding). Kept inline to avoid a dependency.
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
+        out.push(ALPHABET[((n >> 18) & 63) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { ALPHABET[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { ALPHABET[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base64_matches_known_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+        // user:password style
+        assert_eq!(base64_encode(b"iris:iris"), "aXJpczppcmlz");
+    }
+
+    #[test]
+    fn basic_builds_authorization_value() {
+        let opts = ClientOptions::basic("iris", "iris");
+        assert_eq!(opts.authorization_value, "Basic aXJpczppcmlz");
     }
 }
 
