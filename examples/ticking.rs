@@ -5,7 +5,7 @@
 //!   cargo run --example ticking -- <server-url> <table-name> [psk]
 //!
 //! Examples:
-//!   cargo run --example ticking -- http://montyubuntu2604.localdomain:10000 tsy_otr
+//!   cargo run --example ticking -- http://your-server:10000 your_table your_psk
 //!   cargo run --example ticking -- localhost:10000 ticking_demo DeephavenRustDev123
 //!
 //! Auth: pass a PSK as the third argument (or set DH_PSK); otherwise anonymous.
